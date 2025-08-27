@@ -1,0 +1,19 @@
+{
+  "name": "voice-app-server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1",
+    "mongoose": "^8.6.3",
+    "nanoid": "^5.1.0",
+    "zod": "^3.23.8",
+    "twilio": "^5.2.4",
+    "vite": "^5.4.8",
+    "@vitejs/plugin-react": "^4.3.1"
+  }
+}

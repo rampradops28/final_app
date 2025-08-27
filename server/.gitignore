@@ -1,0 +1,10 @@
+.env
+node_modules# env files
+**/.env
+**/.env.local
+**/.env.*
+!**/.env.example
+
+# dependencies
+node_modules/
+**/node_modules/
