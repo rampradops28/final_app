@@ -21,14 +21,14 @@ function Router() {
 
   return (
     <Switch>
-      {!isAuthenticated ? (
+      {/* {!isAuthenticated ? (
         <Route path="/" component={LoginPage} />
-      ) : (
+      ) : ( */}
         <>
           <Route path="/" component={DashboardPage} />
           <Route path="/dashboard" component={DashboardPage} />
         </>
-      )}
+      )
       <Route component={NotFound} />
     </Switch>
   );

@@ -1,14 +1,14 @@
-import { useAuth } from "../hooks/useAuth";
-import { useBilling } from "../hooks/useBilling";
-import { useVoiceRecognition } from "../hooks/useVoiceRecognition";
-import { handleVoiceCommand } from "../lib/ParseVoiceCommand";
-import { generateInvoicePDF } from "../lib/GenerateInvoicePDF";
-import { useToast } from "../hooks/use-toast";
+import { useAuth } from "@/hooks/UseAuth";
+import { useBilling } from "@/hooks/UseBilling";
+import { useVoiceRecognition } from "@/hooks/useVoiceRecognition";
+import { handleVoiceCommand } from "@/lib/ParseVoiceCommand";
+import { generateInvoicePDF } from "@/lib/GenerateInvoicePDF";
+import { useToast } from "@/hooks/use-toast";
 // import LearningAssistant from "../components/LearningAssistant";
 // import SMSIntegration from "../components/SMSIntegration";
 import VoiceSetupGuide from "../components/VoiceSetupGuide";
 import ManualInputPanel from "../components/ManualInputPanel";
-import VoiceTestButton from "../components/VoiceAuthentication";
+// import VoiceTestButton from "../components/VoiceAuthentication";
 import VoiceControlPanel from "../components/VoiceControlPanel";
 import BillingInterface from "../components/BillingInterface";
 import { Button } from "@/components/ui/button";
@@ -19,13 +19,31 @@ export default function DashboardPage() {
   const { user, sessionId, logout } = useAuth();
   const [customerPhone, setCustomerPhone] = useState("");
   const [showVoiceGuide, setShowVoiceGuide] = useState(false);
-  // Manual input is now always visible
   const [voiceFeedbackEnabled, setVoiceFeedbackEnabled] = useState(false);
   const { toast } = useToast();
 
   const billing = useBilling(user?.id || "", sessionId || "");
 
-  // Stats query disabled with modes commented out
+  // ------------------------------
+  // FIX: Define voice first
+  // ------------------------------
+  const voice = useVoiceRecognition((command) => {
+    if (!user?.id || !sessionId) return;
+
+    const context = {
+      addItem: billing.addItem,
+      removeItem: billing.removeItem,
+      clearBill: billing.clearBill,
+      totalAmount: billing.totalAmount,
+      billItems: billing.billItems,
+      generateInvoice: handleGenerateInvoice,
+      stopListening: voice.stopListening, // ✅ now safe
+    };
+
+    handleVoiceCommand(command, context, {
+      voiceFeedback: voiceFeedbackEnabled,
+    });
+  });
 
   const handleGenerateInvoice = () => {
     if (billing.billItems.length === 0) {
@@ -53,7 +71,8 @@ export default function DashboardPage() {
         description: "Invoice downloaded successfully",
       });
 
-      setShowSMSIntegration(true);
+      // If you still want SMS integration, define this state
+      // setShowSMSIntegration(true);
     } catch (error) {
       toast({
         title: "Generation Failed",
@@ -62,24 +81,6 @@ export default function DashboardPage() {
       });
     }
   };
-
-  const onVoiceCommand = (command) => {
-    if (!user?.id || !sessionId) return;
-
-    const context = {
-      addItem: billing.addItem,
-      removeItem: billing.removeItem,
-      clearBill: billing.clearBill,
-      totalAmount: billing.totalAmount,
-      billItems: billing.billItems,
-      generateInvoice: handleGenerateInvoice,
-      stopListening: voice.stopListening,
-    };
-
-    handleVoiceCommand(command, context, { voiceFeedback: voiceFeedbackEnabled });
-  };
-
-  const voice = useVoiceRecognition(onVoiceCommand);
 
   if (!user || !sessionId) return null;
 
@@ -160,9 +161,6 @@ export default function DashboardPage() {
               voiceFeedbackEnabled={voiceFeedbackEnabled}
             />
 
-            {/* Voice Test and Setup */}
-            {/* <VoiceTestButton /> */}
-
             {!voice.isSupported && !showVoiceGuide && (
               <Button
                 onClick={() => setShowVoiceGuide(true)}
@@ -179,9 +177,21 @@ export default function DashboardPage() {
               <VoiceSetupGuide onDismiss={() => setShowVoiceGuide(false)} />
             )}
 
-            {/* Manual Input Panel (always visible) */}
+            {/* Manual Input Panel */}
             <div className="space-y-2">
-              <ManualInputPanel onCommand={onVoiceCommand} />
+              <ManualInputPanel
+                onCommand={(cmd) =>
+                  handleVoiceCommand(cmd, {
+                    addItem: billing.addItem,
+                    removeItem: billing.removeItem,
+                    clearBill: billing.clearBill,
+                    totalAmount: billing.totalAmount,
+                    billItems: billing.billItems,
+                    generateInvoice: handleGenerateInvoice,
+                    stopListening: voice.stopListening,
+                  })
+                }
+              />
             </div>
           </div>
 
@@ -199,25 +209,6 @@ export default function DashboardPage() {
             />
           </div>
         </div>
-
-        {/* Mode Toggle and related sections commented out as requested */}
-        {/**
-         * <div className="mt-6">
-         *   <div className="flex items-center justify-center space-x-4 mb-6">
-         *     <Button ...>Billing Mode</Button>
-         *     <Button ...>Learning Mode</Button>
-         *   </div>
-         *   {currentMode === "learning" && user?.id && (
-         *     <LearningAssistant userId={user.id} onVoiceCommand={onVoiceCommand} />
-         *   )}
-         *   {currentMode === "billing" && (
-         *     <>
-         *       <QuickStats stats={stats} />
-         *       {showSMSIntegration && ( ... )}
-         *     </>
-         *   )}
-         * </div>
-         */}
       </main>
     </div>
   );
