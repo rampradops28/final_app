@@ -28,7 +28,6 @@ export default function DashboardPage() {
   // FIX: Define voice first
   // ------------------------------
   const voice = useVoiceRecognition((command) => {
-    if (!user?.id || !sessionId) return;
 
     const context = {
       addItem: billing.addItem,
