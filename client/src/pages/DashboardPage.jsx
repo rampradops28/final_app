@@ -1,6 +1,6 @@
 import { useAuth } from "@/hooks/UseAuth";
 import { useBilling } from "@/hooks/UseBilling";
-import { useVoiceRecognition } from "@/hooks/useVoiceRecognition";
+import { useVoiceRecognition } from "@/hooks/UseVoiceRecognition";
 import { handleVoiceCommand } from "@/lib/ParseVoiceCommand";
 import { generateInvoicePDF } from "@/lib/GenerateInvoicePDF";
 import { useToast } from "@/hooks/use-toast";
