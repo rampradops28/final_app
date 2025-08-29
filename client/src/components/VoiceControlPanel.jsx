@@ -35,6 +35,7 @@ export default function VoiceControlPanel({
   onQuickCommand,
 }) {
   const [showSettings, setShowSettings] = useState(false);
+  const [quickSelect, setQuickSelect] = useState("add");
 
   return (
     <Card className="shadow-sm border border-gray-100">
@@ -146,82 +147,49 @@ export default function VoiceControlPanel({
         {/* Voice Commands Guide */}
         <div className="space-y-3">
           <h3 className="font-medium text-gray-900">Available Commands:</h3>
-          <div className="text-sm space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2" data-testid="command-add">
-                <Plus className="text-success w-4 h-4" />
-                <span className="text-gray-700">"Add [item] [quantity] [unit] [price]"</span>
-              </div>
-              <Button size="xs" variant="outline" onClick={() => onQuickCommand?.("add potato 1 piece 50")}>Run</Button>
+          {/* Dropdown quick runner */}
+          <div className="p-3 bg-gray-50 rounded-md space-y-2">
+            <div className="flex items-center gap-2">
+              <Select value={quickSelect} onValueChange={setQuickSelect}>
+                <SelectTrigger className="w-full" data-testid="select-quick-command">
+                  <SelectValue placeholder="Choose a command" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="add">Add — "Add [item] [quantity] [unit] [price]"</SelectItem>
+                  <SelectItem value="remove">Remove — "Remove [item]"</SelectItem>
+                  <SelectItem value="reset">Reset bill — "Reset bill"</SelectItem>
+                  <SelectItem value="generate">Generate invoice — "Generate invoice"</SelectItem>
+                  <SelectItem value="list">List items — "List items"</SelectItem>
+                  <SelectItem value="total">Get total — "What is the total"</SelectItem>
+                  <SelectItem value="remove_last">Remove last — "Remove last item"</SelectItem>
+                  <SelectItem value="help">Help — "Help"</SelectItem>
+                  <SelectItem value="stop">Stop listening — "Stop listening"</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                size="sm"
+                onClick={() => {
+                  const map = {
+                    add: "add potato 1 piece 50",
+                    remove: "remove potato",
+                    reset: "reset bill",
+                    generate: "generate invoice",
+                    list: "list items",
+                    total: "what is the total",
+                    remove_last: "remove last item",
+                    help: "help",
+                    stop: "stop listening",
+                  };
+                  onQuickCommand?.(map[quickSelect]);
+                }}
+                data-testid="button-run-quick-select"
+              >
+                Run
+              </Button>
             </div>
-            <div className="text-xs text-gray-500 ml-6">
-              Units: kg, packet, box, piece, liter, etc.
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2" data-testid="command-remove">
-                <Minus className="text-error w-4 h-4" />
-                <span className="text-gray-700">"Remove [item]"</span>
-              </div>
-              <Button size="xs" variant="outline" onClick={() => onQuickCommand?.("remove potato")}>Run</Button>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2" data-testid="command-reset">
-                <RotateCcw className="text-warning w-4 h-4" />
-                <span className="text-gray-700">"Reset bill"</span>
-              </div>
-              <Button size="xs" variant="outline" onClick={() => onQuickCommand?.("reset bill")}>Run</Button>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2" data-testid="command-generate">
-                <FileText className="text-primary w-4 h-4" />
-                <span className="text-gray-700">"Generate invoice"</span>
-              </div>
-              <Button size="xs" variant="outline" onClick={() => onQuickCommand?.("generate invoice")}>Run</Button>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2" data-testid="command-list">
-                <List className="text-gray-700 w-4 h-4" />
-                <span className="text-gray-700">"List items"</span>
-              </div>
-              <Button size="xs" variant="outline" onClick={() => onQuickCommand?.("list items")}>Run</Button>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2" data-testid="command-total">
-                <Calculator className="text-gray-700 w-4 h-4" />
-                <span className="text-gray-700">"What is the total"</span>
-              </div>
-              <Button size="xs" variant="outline" onClick={() => onQuickCommand?.("what is the total")}>Run</Button>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2" data-testid="command-remove-last">
-                <Minus className="text-gray-700 w-4 h-4" />
-                <span className="text-gray-700">"Remove last item"</span>
-              </div>
-              <Button size="xs" variant="outline" onClick={() => onQuickCommand?.("remove last item")}>Run</Button>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2" data-testid="command-help">
-                <HelpCircle className="text-gray-700 w-4 h-4" />
-                <span className="text-gray-700">"Help"</span>
-              </div>
-              <Button size="xs" variant="outline" onClick={() => onQuickCommand?.("help")}>Run</Button>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2" data-testid="command-stop">
-                <StopCircle className="text-gray-700 w-4 h-4" />
-                <span className="text-gray-700">"Stop listening"</span>
-              </div>
-              <Button size="xs" variant="outline" onClick={() => onQuickCommand?.("stop listening")}>Run</Button>
-            </div>
+            <div className="text-xs text-gray-500">Units: kg, packet, box, piece, liter, etc.</div>
           </div>
+          {/* Removed long list; dropdown above is the single source */}
         </div>
 
         {/* Last Command Display */}

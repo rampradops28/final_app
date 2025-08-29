@@ -173,17 +173,12 @@ export function handleVoiceCommand(command, context, settings) {
   const result = parseVoiceCommand(command);
   const shouldSpeak = settings?.voiceFeedback !== false;
 
-  const speakOrderSummary = () => {
+  const getOrderSummary = () => {
     try {
       const items = context?.billItems || [];
       const count = items.length;
-      if (count === 0) {
-        speakText("Your order is empty.");
-        return;
-      }
-      // Build a concise summary: up to first 5 items
+      if (count === 0) return "Your order is empty.";
       const parts = items.slice(0, 5).map((it, idx) => {
-        // Expect item shape: { name, quantity, rate }
         const name = it?.name ?? "item";
         const qty = it?.quantity ?? "1";
         const rate = typeof it?.rate === "number" ? it.rate : Number(it?.rate) || 0;
@@ -191,9 +186,9 @@ export function handleVoiceCommand(command, context, settings) {
       });
       const more = items.length > 5 ? ` and ${items.length - 5} more items` : "";
       const total = typeof context?.totalAmount === "number" ? context.totalAmount : Number(context?.totalAmount) || 0;
-      speakText(`You now have ${count} ${count === 1 ? "item" : "items"}: ${parts.join(", ")}${more}. Total is ₹${total.toFixed(2)}.`);
+      return `You now have ${count} ${count === 1 ? "item" : "items"}: ${parts.join(", ")}${more}. Total is ₹${total.toFixed(2)}.`;
     } catch (_) {
-      // Fail silently; we don't want to break voice flow
+      return "";
     }
   };
 
@@ -202,8 +197,7 @@ export function handleVoiceCommand(command, context, settings) {
       const e = result.entities;
       if (e?.name && e?.quantityRaw && typeof e?.rateNumber === "number") {
         context.addItem(e.name, e.quantityRaw, e.rateNumber);
-        if (shouldSpeak) speakText(result.message || "Item added to bill");
-        if (shouldSpeak) speakOrderSummary();
+        if (shouldSpeak) speakText(`${result.message || "Item added to bill"}. ${getOrderSummary()}`);
       }
       break;
     }
@@ -212,16 +206,14 @@ export function handleVoiceCommand(command, context, settings) {
       const e = result.entities;
       if (e?.name) {
         context.removeItem("", e.name);
-        if (shouldSpeak) speakText(result.message || "Item removed from bill");
-        if (shouldSpeak) speakOrderSummary();
+        if (shouldSpeak) speakText(`${result.message || "Item removed from bill"}. ${getOrderSummary()}`);
       }
       break;
     }
 
     case "reset_bill":
       context.clearBill();
-      if (shouldSpeak) speakText(result.message || "Bill has been reset");
-      if (shouldSpeak) speakOrderSummary();
+      if (shouldSpeak) speakText(`${result.message || "Bill has been reset"}. ${getOrderSummary()}`);
       break;
 
     case "generate_invoice":
@@ -242,18 +234,19 @@ export function handleVoiceCommand(command, context, settings) {
       if (shouldSpeak) speakText("Switching to learning assistant mode");
       break;
 
-    case "list_items":
-      if (shouldSpeak) speakText(result.message || "Here are your items");
-      speakOrderSummary();
+    case "list_items": {
+      const msg = result.message || "Here are your items";
+      const sum = getOrderSummary();
+      if (shouldSpeak) speakText(`${msg}. ${sum}`);
       break;
+    }
 
     case "remove_last": {
       const items = context?.billItems || [];
       const last = items[items.length - 1];
       if (last?.id) {
         context.removeItem(last.id);
-        if (shouldSpeak) speakText(result.message || "Removed last item");
-        if (shouldSpeak) speakOrderSummary();
+        if (shouldSpeak) speakText(`${result.message || "Removed last item"}. ${getOrderSummary()}`);
       } else if (shouldSpeak) {
         speakText("No items to remove");
       }
