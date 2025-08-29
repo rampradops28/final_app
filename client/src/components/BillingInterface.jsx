@@ -85,7 +85,14 @@ export default function BillingInterface({
                     </div>
                   </TableCell>
                   <TableCell className="text-gray-700">{item.quantity}</TableCell>
-                  <TableCell className="text-gray-700">₹{item.rate.toFixed(2)}/unit</TableCell>
+                  <TableCell className="text-gray-700">{
+                    (() => {
+                      const parts = String(item.quantity || "").split(/\s+/);
+                      const unit = parts[1] || "unit";
+                      const rate = typeof item.rate === "number" ? item.rate : Number(item.rate) || 0;
+                      return `₹${rate.toFixed(2)}/${unit}`;
+                    })()
+                  }</TableCell>
                   <TableCell className="font-semibold text-gray-900">₹{item.amount.toFixed(2)}</TableCell>
                   <TableCell>
                     <Button

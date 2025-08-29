@@ -50,8 +50,9 @@ const intents = [
     test: (t) => /\b(add|insert|put|include)\b/.test(t),
     extract: (t) => {
       // Patterns tried in order
-      // 1) add <name> <qty> <unit?> <price>
-      let m = t.match(/add\s+(.+?)\s+(\d+(?:\.\d+)?)\s*(kg|grams?|g|pieces?|items?|units?|piece|packets?|packet|boxes?|box|liters?|liter|litres?|litre|l)?\s+(\d+(?:\.\d+)?)/i);
+      // 1) add <name> <qty> <unit> <price>
+      //    example: add potato 1 piece 50
+      let m = t.match(/add\s+(.+?)\s+(\d+(?:\.\d+)?)\s*(kg|grams?|g|pieces?|items?|units?|piece|packets?|packet|boxes?|box|liters?|liter|litres?|litre|l)\s+(\d+(?:\.\d+)?)/i);
       if (!m) {
         // 2) add <name> <qty> <unit?> for <price> (rupees)
         m = t.match(/add\s+(.+?)\s+(\d+(?:\.\d+)?)\s*(kg|grams?|g|pieces?|items?|units?|piece|packets?|packet|boxes?|box|liters?|liter|litres?|litre|l)?\s+(?:for\s+)?(?:(?:rs\.?|₹)?\s*)?(\d+(?:\.\d+)?)(?:\s*rupees?)?/i);
@@ -79,13 +80,15 @@ const intents = [
       const unit = normalizeUnit(unitRaw) || "piece";
       const rate = parseNumberLike(priceStr) ?? extractPrice(t);
       if (!rate) return null;
+      const itemName = cap(name.trim());
       return {
-        name: cap(name.trim()),
+        name: itemName,
         quantityRaw: `${qty} ${unit}`,
         quantityNumber: qty,
         unit,
         rateNumber: rate,
-        message: `Added ${qty} ${unit} of ${cap(name)} for ₹${rate}`,
+        // Message in required structure
+        message: `Add ${itemName} ${qty} ${unit} ₹${rate}`,
       };
     },
   },
@@ -123,6 +126,21 @@ const intents = [
     name: "stop_listening",
     test: (t) => /(stop|pause).*(listen|listening)?/.test(t),
     extract: () => ({ message: "Stopping voice recognition" }),
+  },
+  {
+    name: "list_items",
+    test: (t) => /(list|show|display).*(items|bill|cart)/.test(t),
+    extract: () => ({ message: "Listing current bill items" }),
+  },
+  {
+    name: "remove_last",
+    test: (t) => /(remove|delete).*(last|previous)\s*(item)?/.test(t),
+    extract: () => ({ message: "Removed last item" }),
+  },
+  {
+    name: "help",
+    test: (t) => /(help|what can you do|commands)/.test(t),
+    extract: () => ({ message: "You can say: add item, remove item, list items, clear bill, get total, generate invoice." }),
   },
 ];
 
@@ -222,6 +240,31 @@ export function handleVoiceCommand(command, context, settings) {
 
     case "learning_mode":
       if (shouldSpeak) speakText("Switching to learning assistant mode");
+      break;
+
+    case "list_items":
+      if (shouldSpeak) speakText(result.message || "Here are your items");
+      speakOrderSummary();
+      break;
+
+    case "remove_last": {
+      const items = context?.billItems || [];
+      const last = items[items.length - 1];
+      if (last?.id) {
+        context.removeItem(last.id);
+        if (shouldSpeak) speakText(result.message || "Removed last item");
+        if (shouldSpeak) speakOrderSummary();
+      } else if (shouldSpeak) {
+        speakText("No items to remove");
+      }
+      break;
+    }
+
+    case "help":
+      if (shouldSpeak)
+        speakText(
+          "Try: add potato 1 piece 50, remove potato, list items, clear bill, get total, generate invoice, stop listening."
+        );
       break;
 
     default:

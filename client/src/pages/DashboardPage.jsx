@@ -12,8 +12,10 @@ import ManualInputPanel from "../components/ManualInputPanel";
 import VoiceControlPanel from "../components/VoiceControlPanel";
 import BillingInterface from "../components/BillingInterface";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { LogOut, Mic, AlertCircle } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
+import { speakText, stopSpeaking } from "@/lib/SpeechSynthesis";
 
 export default function DashboardPage() {
   const { user, sessionId, logout } = useAuth();
@@ -43,6 +45,53 @@ export default function DashboardPage() {
       voiceFeedback: voiceFeedbackEnabled,
     });
   });
+
+  // Quick command runner for UI buttons in VoiceControlPanel
+  const runQuickCommand = (cmd) => {
+    const context = {
+      addItem: billing.addItem,
+      removeItem: billing.removeItem,
+      clearBill: billing.clearBill,
+      totalAmount: billing.totalAmount,
+      billItems: billing.billItems,
+      generateInvoice: handleGenerateInvoice,
+      stopListening: voice.stopListening,
+    };
+    handleVoiceCommand(cmd, context, { voiceFeedback: voiceFeedbackEnabled });
+  };
+
+  // Speak bill summary when voice feedback is toggled ON; stop when toggled OFF
+  const prevVoiceFeedbackRef = useRef(voiceFeedbackEnabled);
+  useEffect(() => {
+    const prev = prevVoiceFeedbackRef.current;
+    if (!prev && voiceFeedbackEnabled) {
+      // Just enabled: speak current bill summary once
+      try {
+        const items = billing.billItems || [];
+        if (items.length === 0) {
+          speakText("Your order is empty.");
+        } else {
+          const parts = items.slice(0, 5).map((it, idx) => {
+            const name = it?.name ?? "item";
+            const qty = it?.quantity ?? "1";
+            const rate = typeof it?.rate === "number" ? it.rate : Number(it?.rate) || 0;
+            return `${idx + 1}) ${qty} ${name} at ₹${rate}`;
+          });
+          const more = items.length > 5 ? ` and ${items.length - 5} more items` : "";
+          const total = typeof billing.totalAmount === "number" ? billing.totalAmount : Number(billing.totalAmount) || 0;
+          speakText(`You now have ${items.length} ${items.length === 1 ? "item" : "items"}: ${parts.join(", ")}${more}. Total is ₹${total.toFixed(2)}.`);
+        }
+      } catch (_) {
+        // no-op
+      }
+    } else if (prev && !voiceFeedbackEnabled) {
+      // Just disabled: stop speaking
+      stopSpeaking();
+    }
+    prevVoiceFeedbackRef.current = voiceFeedbackEnabled;
+    // Only react to toggling; do not add billing deps to avoid repeated reads
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [voiceFeedbackEnabled]);
 
   const handleGenerateInvoice = () => {
     if (billing.billItems.length === 0) {
@@ -158,6 +207,7 @@ export default function DashboardPage() {
               }}
               onVoiceFeedbackChange={setVoiceFeedbackEnabled}
               voiceFeedbackEnabled={voiceFeedbackEnabled}
+              onQuickCommand={runQuickCommand}
             />
 
             {!voice.isSupported && !showVoiceGuide && (
@@ -177,7 +227,7 @@ export default function DashboardPage() {
             )}
 
             {/* Manual Input Panel */}
-            <div className="space-y-2">
+            {/* <div className="space-y-2">
               <ManualInputPanel
                 onCommand={(cmd) =>
                   handleVoiceCommand(cmd, {
@@ -191,7 +241,30 @@ export default function DashboardPage() {
                   })
                 }
               />
-            </div>
+            </div> */}
+
+            {/* Available Commands Card */}
+            {/* <Card className="border border-gray-100 shadow-sm">
+              <CardContent className="p-4 space-y-2">
+                <h3 className="text-base font-semibold text-gray-900">Available Commands</h3>
+                <ul className="list-disc list-inside text-sm text-gray-700 space-y-1">
+                  <li>
+                    <span className="font-medium">Add</span> — "Add [item] [quantity] [unit] [price]"
+                    <div className="text-xs text-gray-500 ml-4">Units: kg, packet, box, piece, liter, etc.</div>
+                    <div className="text-xs text-gray-500 ml-4">Examples: Add potato 1 piece 50; Add sugar 2 kg 40</div>
+                  </li>
+                  <li>
+                    <span className="font-medium">Remove</span> — "Remove [item]"
+                  </li>
+                  <li>
+                    <span className="font-medium">Reset bill</span> — "Reset bill"
+                  </li>
+                  <li>
+                    <span className="font-medium">Generate invoice</span> — "Generate invoice"
+                  </li>
+                </ul>
+              </CardContent>
+            </Card> */}
           </div>
 
           {/* Billing Interface */}
