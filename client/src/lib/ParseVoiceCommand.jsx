@@ -1,4 +1,4 @@
-import { speakText } from "./speechSynthesis";
+import { speakText } from "./SpeechSynthesis";
 
 // -----------------------------
 // Normalizers & helpers
