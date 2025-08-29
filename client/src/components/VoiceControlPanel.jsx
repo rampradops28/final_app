@@ -170,7 +170,7 @@ export default function VoiceControlPanel({
                 size="sm"
                 onClick={() => {
                   const map = {
-                    add: "add potato 1 piece 50",
+                    add: "add potato 2 kg 50 rs",
                     remove: "remove potato",
                     reset: "reset bill",
                     generate: "generate invoice",

@@ -127,6 +127,18 @@ export function useVoiceRecognition(onCommand) {
   }, [onCommand, toast, currentLanguage])
 
   const startListening = useCallback(() => {
+    // Do not attempt to start recognition while offline
+    if (typeof navigator !== 'undefined' && navigator && navigator.onLine === false) {
+      console.warn('Offline: speech recognition requires network in Chrome/Edge')
+      toast({
+        title: 'Offline',
+        description:
+          'Voice recognition requires an internet connection in this browser. Please go online to use the mic.',
+        variant: 'destructive',
+      })
+      return
+    }
+
     if (!recognitionRef.current) {
       initializeRecognition()
     }

@@ -50,46 +50,100 @@ const intents = [
     test: (t) => /\b(add|insert|put|include)\b/.test(t),
     extract: (t) => {
       // Patterns tried in order
-      // 1) add <name> <qty> <unit> <price>
-      //    example: add potato 1 piece 50
-      let m = t.match(/add\s+(.+?)\s+(\d+(?:\.\d+)?)\s*(kg|grams?|g|pieces?|items?|units?|piece|packets?|packet|boxes?|box|liters?|liter|litres?|litre|l)\s+(\d+(?:\.\d+)?)/i);
-      if (!m) {
-        // 2) add <name> <qty> <unit?> for <price> (rupees)
-        m = t.match(/add\s+(.+?)\s+(\d+(?:\.\d+)?)\s*(kg|grams?|g|pieces?|items?|units?|piece|packets?|packet|boxes?|box|liters?|liter|litres?|litre|l)?\s+(?:for\s+)?(?:(?:rs\.?|₹)?\s*)?(\d+(?:\.\d+)?)(?:\s*rupees?)?/i);
+      // 1) add <name> <qty> <unit> <price>[ rs|₹]
+      //    example: add tomato 50 piece 5
+      let m = t.match(/add\s+(.+?)\s+(\d+(?:\.\d+)?)\s*(kg|grams?|g|pieces?|items?|units?|piece|packets?|packet|packs?|pack|boxes?|box|pcs?|pc|pkts?|pkt|liters?|liter|litres?|litre|l)\s+(\d+(?:\.\d+)?)(?:\s*(?:rs\.?|₹))?/i);
+      if (m) {
+        const [, name, qtyStr, unitRaw, priceStr] = m;
+        const qty = parseNumberLike(qtyStr) ?? 1;
+        const unit = normalizeUnit(unitRaw) || "piece";
+        const rate = parseNumberLike(priceStr) ?? extractPrice(t);
+        if (!rate) return null;
+        const itemName = cap(name.trim());
+        return {
+          name: itemName,
+          quantityRaw: `${qty} ${unit}`,
+          quantityNumber: qty,
+          unit,
+          rateNumber: rate,
+          message: `Add ${itemName} ${qty} ${unit} ₹${rate}`,
+        };
       }
-      if (!m) {
-        // 3) add <name> for <price>
-        m = t.match(/add\s+(.+?)\s+(?:for\s+)?(?:(?:rs\.?|₹)?\s*)?(\d+(?:\.\d+)?)(?:\s*rupees?)?/i);
-        if (m) {
-          const name = m[1].trim();
-          const rate = parseNumberLike(m[2]);
-          return {
-            name: cap(name),
-            quantityRaw: "1 piece",
-            quantityNumber: 1,
-            unit: "piece",
-            rateNumber: rate,
-            message: `Added 1 piece of ${cap(name)} for ₹${rate}`,
-          };
-        }
-      }
-      if (!m) return null;
 
-      const [, name, qtyStr, unitRaw, priceStr] = m;
-      const qty = parseNumberLike(qtyStr) ?? 1;
-      const unit = normalizeUnit(unitRaw) || "piece";
-      const rate = parseNumberLike(priceStr) ?? extractPrice(t);
-      if (!rate) return null;
-      const itemName = cap(name.trim());
-      return {
-        name: itemName,
-        quantityRaw: `${qty} ${unit}`,
-        quantityNumber: qty,
-        unit,
-        rateNumber: rate,
-        // Message in required structure
-        message: `Add ${itemName} ${qty} ${unit} ₹${rate}`,
-      };
+      // 2) add <name> <qty> <unit> (for)? (rs|₹)? <price>[ rs|₹]
+      m = t.match(/add\s+(.+?)\s+(\d+(?:\.\d+)?)\s*(kg|grams?|g|pieces?|items?|units?|piece|packets?|packet|packs?|pack|boxes?|box|pcs?|pc|pkts?|pkt|liters?|liter|litres?|litre|l)\s+(?:for\s+)?(?:(?:rs\.?|₹)?\s*)?(\d+(?:\.\d+)?)(?:\s*(?:rs\.?|₹))?/i);
+      if (m) {
+        const [, name, qtyStr, unitRaw, priceStr] = m;
+        const qty = parseNumberLike(qtyStr) ?? 1;
+        const unit = normalizeUnit(unitRaw) || "piece";
+        const rate = parseNumberLike(priceStr) ?? extractPrice(t);
+        if (!rate) return null;
+        const itemName = cap(name.trim());
+        return {
+          name: itemName,
+          quantityRaw: `${qty} ${unit}`,
+          quantityNumber: qty,
+          unit,
+          rateNumber: rate,
+          message: `Add ${itemName} ${qty} ${unit} ₹${rate}`,
+        };
+      }
+
+      // 3) add <name> (rs|₹)? <price>[ rs|₹] <qty> <unit>  (price-first)
+      m = t.match(/add\s+(.+?)\s+(?:(?:rs\.?|₹)?\s*)?(\d+(?:\.\d+)?)(?:\s*(?:rs\.?|₹))?\s+(\d+(?:\.\d+)?)\s*(kg|grams?|g|pieces?|items?|units?|piece|packets?|packet|packs?|pack|boxes?|box|pcs?|pc|pkts?|pkt|liters?|liter|litres?|litre|l)/i);
+      if (m) {
+        const [, name, priceStr, qtyStr, unitRaw] = m;
+        const qty = parseNumberLike(qtyStr) ?? 1;
+        const unit = normalizeUnit(unitRaw) || "piece";
+        const rate = parseNumberLike(priceStr) ?? extractPrice(t);
+        if (!rate) return null;
+        const itemName = cap(name.trim());
+        return {
+          name: itemName,
+          quantityRaw: `${qty} ${unit}`,
+          quantityNumber: qty,
+          unit,
+          rateNumber: rate,
+          message: `Add ${itemName} ${qty} ${unit} ₹${rate}`,
+        };
+      }
+
+      // 4) add <name> <price>[ rs|₹] <qty> <unit>  (no explicit marker order)
+      m = t.match(/add\s+(.+?)\s+(\d+(?:\.\d+)?)(?:\s*(?:rs\.?|₹))?\s+(\d+(?:\.\d+)?)\s*(kg|grams?|g|pieces?|items?|units?|piece|packets?|packet|packs?|pack|boxes?|box|pcs?|pc|pkts?|pkt|liters?|liter|litres?|litre|l)/i);
+      if (m) {
+        const [, name, n1, n2, unitRaw] = m;
+        // Heuristic: the number closest to the unit is quantity
+        const qty = parseNumberLike(n2) ?? 1;
+        const unit = normalizeUnit(unitRaw) || "piece";
+        const rate = parseNumberLike(n1) ?? extractPrice(t);
+        if (!rate) return null;
+        const itemName = cap(name.trim());
+        return {
+          name: itemName,
+          quantityRaw: `${qty} ${unit}`,
+          quantityNumber: qty,
+          unit,
+          rateNumber: rate,
+          message: `Add ${itemName} ${qty} ${unit} ₹${rate}`,
+        };
+      }
+
+      // 5) add <name> for <price>[ rs|₹] (defaults to 1 piece)
+      m = t.match(/add\s+(.+?)\s+(?:for\s+)?(?:(?:rs\.?|₹)?\s*)?(\d+(?:\.\d+)?)(?:\s*(?:rs\.?|₹)|\s*rupees?)?/i);
+      if (m) {
+        const name = m[1].trim();
+        const rate = parseNumberLike(m[2]);
+        return {
+          name: cap(name),
+          quantityRaw: "1 piece",
+          quantityNumber: 1,
+          unit: "piece",
+          rateNumber: rate,
+          message: `Added 1 piece of ${cap(name)} for ₹${rate}`,
+        };
+      }
+
+      return null;
     },
   },
   {
