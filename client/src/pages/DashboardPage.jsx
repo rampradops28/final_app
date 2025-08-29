@@ -82,7 +82,7 @@ export default function DashboardPage() {
     }
   };
 
-  if (!user || !sessionId) return null;
+  // Allow dashboard to render even if not authenticated (guest mode)
 
   return (
     <div className="min-h-screen bg-background">
@@ -105,7 +105,7 @@ export default function DashboardPage() {
                   className="text-sm text-gray-500"
                   data-testid="text-welcome-message"
                 >
-                  Welcome, {user.name}
+                  Welcome, {user?.name || "Guest"}
                 </p>
               </div>
             </div>
