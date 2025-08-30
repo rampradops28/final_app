@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { LogOut, Mic, AlertCircle } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
+import { usePWAInstall } from "@/hooks/usePWAInstall";
 import { speakText, stopSpeaking } from "@/lib/SpeechSynthesis";
 
 export default function DashboardPage() {
@@ -23,6 +24,7 @@ export default function DashboardPage() {
   const [showVoiceGuide, setShowVoiceGuide] = useState(false);
   const [voiceFeedbackEnabled, setVoiceFeedbackEnabled] = useState(false);
   const { toast } = useToast();
+  const { isInstallable, installed, promptInstall } = usePWAInstall();
 
   const billing = useBilling(user?.id || "", sessionId || "");
 
@@ -282,6 +284,21 @@ export default function DashboardPage() {
           </div>
         </div>
       </main>
+
+      {/* In-app Install Prompt (shows when browser signals installable) */}
+      {isInstallable && !installed && (
+        <div className="fixed inset-x-0 bottom-3 mx-auto w-[92%] md:w-[420px] shadow-lg rounded-xl border border-gray-200 bg-white/95 backdrop-blur p-3 z-50">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="text-sm font-semibold text-gray-900">Install VoiceBill Pro</div>
+              <div className="text-xs text-gray-600">Add to your home screen for faster access.</div>
+            </div>
+            <Button size="sm" onClick={promptInstall} className="shrink-0">
+              Install
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

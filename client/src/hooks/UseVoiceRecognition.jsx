@@ -7,6 +7,7 @@ export function useVoiceRecognition(onCommand) {
   const [lastCommand, setLastCommand] = useState("")
   const [currentLanguage, setCurrentLanguage] = useState("en-US")
   const recognitionRef = useRef(null)
+  const lastProcessedRef = useRef({ text: '', at: 0 })
   const { toast } = useToast()
 
   // Check for speech recognition support
@@ -62,8 +63,9 @@ export function useVoiceRecognition(onCommand) {
         "You can now use voice commands! Click the microphone to start.",
     })
 
-    recognition.continuous = true
-    recognition.interimResults = true
+    // Reduce repeats on some mobile browsers
+    recognition.continuous = false
+    recognition.interimResults = false
     recognition.lang = currentLanguage
 
     recognition.onstart = () => {
@@ -71,18 +73,29 @@ export function useVoiceRecognition(onCommand) {
     }
 
     recognition.onresult = (event) => {
-      let finalTranscript = ""
+      // Only process the latest final result to avoid duplicates
+      const results = event.results
+      const last = results[results.length - 1]
+      if (!last || !last.isFinal) return
 
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        if (event.results[i].isFinal) {
-          finalTranscript += event.results[i][0].transcript
-        }
+      const text = String(last[0]?.transcript || '').trim().toLowerCase()
+      if (!text) return
+
+      // Throttle duplicates within 1500ms or same text
+      const now = Date.now()
+      const { text: prevText, at } = lastProcessedRef.current
+      if (text === prevText && now - at < 1500) {
+        return
       }
+      lastProcessedRef.current = { text, at: now }
 
-      if (finalTranscript.trim()) {
-        const command = finalTranscript.trim().toLowerCase()
-        setLastCommand(command)
-        onCommand(command)
+      setLastCommand(text)
+      // Stop first to avoid TTS being captured
+      try { recognition.stop() } catch (_) {}
+      try {
+        onCommand(text)
+      } catch (e) {
+        console.error('onCommand failed', e)
       }
     }
 
