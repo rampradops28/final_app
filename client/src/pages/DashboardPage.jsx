@@ -2,17 +2,32 @@ import { useAuth } from "@/hooks/UseAuth";
 import { useBilling } from "@/hooks/UseBilling";
 import { useVoiceRecognition } from "@/hooks/UseVoiceRecognition";
 import { handleVoiceCommand } from "@/lib/ParseVoiceCommand";
-import { generateInvoicePDF } from "@/lib/GenerateInvoicePDF";
+import { generateInvoicePDF, generateInvoicePDFAndGetDataUrl } from "@/lib/GenerateInvoicePDF";
+import { apiRequest } from "@/lib/queryClient";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from "@/components/ui/AlertDialog";
 import { useToast } from "@/hooks/use-toast";
 // import LearningAssistant from "../components/LearningAssistant";
 // import SMSIntegration from "../components/SMSIntegration";
 import VoiceSetupGuide from "../components/VoiceSetupGuide";
+import VoiceAuthentication from "../components/VoiceAuthentication";
+import { useVoiceAuth } from "@/hooks/UseVoiceAuth";
 import ManualInputPanel from "../components/ManualInputPanel";
 // import VoiceTestButton from "../components/VoiceAuthentication";
 import VoiceControlPanel from "../components/VoiceControlPanel";
 import BillingInterface from "../components/BillingInterface";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { LogOut, Mic, AlertCircle } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { usePWAInstall } from "@/hooks/usePWAInstall";
@@ -25,13 +40,56 @@ export default function DashboardPage() {
   const [voiceFeedbackEnabled, setVoiceFeedbackEnabled] = useState(false);
   const { toast } = useToast();
   const { isInstallable, installed, promptInstall } = usePWAInstall();
+  const voiceAuth = useVoiceAuth();
+
+  // Voice auth requirement toggle (persisted)
+  const [requireVoiceAuth, setRequireVoiceAuth] = useState(true);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("__voice_auth_required__");
+      setRequireVoiceAuth(raw === null ? true : raw === "1");
+    } catch {}
+  }, []);
+  useEffect(() => {
+    try { localStorage.setItem("__voice_auth_required__", requireVoiceAuth ? "1" : "0"); } catch {}
+    // If turning off requirement, unlock immediately for this session
+    if (!requireVoiceAuth) {
+      voiceAuth.markVerified(true);
+    } else {
+      // Turning back ON should force fresh verification
+      voiceAuth.resetVerification();
+    }
+  }, [requireVoiceAuth]);
 
   const billing = useBilling(user?.id || "", sessionId || "");
+
+  // Invoice dialog state
+  const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
+  const [invoicePreview, setInvoicePreview] = useState(null); // { fileName, dataUrl, total, items }
+  const [isSendingSms, setIsSendingSms] = useState(false);
+
+  // Helper to mask phone for user-friendly messages
+  const maskPhone = (phone) => {
+    if (!phone) return "(unknown)";
+    const digits = String(phone).replace(/\D/g, "");
+    if (digits.length < 4) return phone;
+    const last2 = digits.slice(-2);
+    const prefix = String(phone).slice(0, 3);
+    return `${prefix}***-**${last2}`;
+  };
 
   // ------------------------------
   // FIX: Define voice first
   // ------------------------------
   const voice = useVoiceRecognition((command) => {
+    // Gate by voice auth only if required
+    if (requireVoiceAuth && !voiceAuth.isVerified) {
+      const ok = voiceAuth.verifyFromCommand(command)
+      if (!ok) {
+        toast({ title: "Voice not recognized", description: "Say your enrolled name to unlock commands", variant: "destructive" })
+        return
+      }
+    }
 
     const context = {
       addItem: billing.addItem,
@@ -41,10 +99,12 @@ export default function DashboardPage() {
       billItems: billing.billItems,
       generateInvoice: handleGenerateInvoice,
       stopListening: voice.stopListening, // ✅ now safe
+      toast,
     };
 
     handleVoiceCommand(command, context, {
       voiceFeedback: voiceFeedbackEnabled,
+      languageMode: voice.currentLanguage,
     });
   });
 
@@ -58,9 +118,24 @@ export default function DashboardPage() {
       billItems: billing.billItems,
       generateInvoice: handleGenerateInvoice,
       stopListening: voice.stopListening,
+      toast,
     };
-    handleVoiceCommand(cmd, context, { voiceFeedback: voiceFeedbackEnabled });
+    handleVoiceCommand(cmd, context, {
+      voiceFeedback: voiceFeedbackEnabled,
+      languageMode: voice.currentLanguage,
+    });
   };
+
+  // Reset bill automatically when mic is toggled off (explicit stop)
+  useEffect(() => {
+    if (!voice.isListening) {
+      // Avoid clearing when initially loading or when bill is already empty
+      if ((billing.billItems?.length || 0) > 0) {
+        billing.clearBill();
+      }
+      stopSpeaking();
+    }
+  }, [voice.isListening]);
 
   // Speak bill summary when voice feedback is toggled ON; stop when toggled OFF
   const prevVoiceFeedbackRef = useRef(voiceFeedbackEnabled);
@@ -95,7 +170,7 @@ export default function DashboardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [voiceFeedbackEnabled]);
 
-  const handleGenerateInvoice = () => {
+  const handleGenerateInvoice = async () => {
     if (billing.billItems.length === 0) {
       toast({
         title: "No Items",
@@ -106,29 +181,54 @@ export default function DashboardPage() {
     }
 
     try {
-      generateInvoicePDF({
+      const { fileName, dataUrl } = await generateInvoicePDFAndGetDataUrl({
         billItems: billing.billItems,
         totalAmount: billing.totalAmount,
         customerPhone: customerPhone || undefined,
       });
-
-      if (customerPhone) {
-        billing.updateBill(customerPhone);
-      }
+      setInvoicePreview({
+        fileName,
+        dataUrl,
+        total: Number(billing.totalAmount) || 0,
+        items: billing.billItems,
+      });
+      setInvoiceDialogOpen(true);
 
       toast({
         title: "PDF Generated",
         description: "Invoice downloaded successfully",
       });
-
-      // If you still want SMS integration, define this state
-      // setShowSMSIntegration(true);
     } catch (error) {
       toast({
         title: "Generation Failed",
         description: "Could not generate PDF",
         variant: "destructive",
       });
+    }
+  };
+
+  const sendInvoiceSms = async () => {
+    if (!invoicePreview || !customerPhone) return;
+    setIsSendingSms(true);
+    try {
+      const res = await apiRequest("POST", "/api/sms/send-invoice", {
+        phoneNumber: customerPhone,
+        fileName: invoicePreview.fileName,
+        fileBase64: invoicePreview.dataUrl,
+        message: `Invoice total: ₹${Number(invoicePreview.total).toFixed(2)}`,
+      });
+      const data = await res.json();
+      const masked = maskPhone(customerPhone);
+      const sid = data?.messageId ? ` Message ID: ${data.messageId}` : "";
+      toast({ title: "SMS Sent", description: `Invoice sent to ${masked}.${sid}` });
+      billing.updateBill(customerPhone);
+      setInvoiceDialogOpen(false);
+    } catch (err) {
+      const masked = maskPhone(customerPhone);
+      const msg = err?.message || "Unknown error";
+      toast({ title: "SMS Failed", description: `Could not send to ${masked}. ${msg}`, variant: "destructive" });
+    } finally {
+      setIsSendingSms(false);
     }
   };
 
@@ -175,6 +275,12 @@ export default function DashboardPage() {
               </span>
             </div>
 
+            {/* Voice Auth Requirement Toggle */}
+            <div className="hidden md:flex items-center gap-2 mr-2">
+              <Switch id="require-voice-auth" checked={requireVoiceAuth} onCheckedChange={setRequireVoiceAuth} />
+              <Label htmlFor="require-voice-auth" className="text-sm text-gray-700">Require Voice Auth</Label>
+            </div>
+
             <Button
               onClick={logout}
               variant="ghost"
@@ -191,8 +297,35 @@ export default function DashboardPage() {
       {/* Main Content */}
       <main className="mobile-shell py-5 md:py-6">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
+          {/* Voice Authentication gate (shown only if required) */}
+          {requireVoiceAuth && !voiceAuth.enrolledName && (
+            <div className="lg:col-span-3">
+              <VoiceAuthentication
+                mode="enroll"
+                onAuthSuccess={() => {
+                  // Prompt to enroll with a name (simple prompt for demo)
+                  const name = window.prompt("Enter your name to enroll voice (e.g., Ram)") || ""
+                  if (voiceAuth.enroll(name)) {
+                    toast({ title: "Voice enrolled", description: `Welcome, ${name}` })
+                  } else {
+                    toast({ title: "Enrollment failed", description: "Please enter a valid name", variant: "destructive" })
+                  }
+                }}
+                onAuthFailed={() => {
+                  toast({ title: "Voice auth failed", description: "Try again" , variant: "destructive"})
+                }}
+              />
+            </div>
+          )}
           {/* Voice Control Panel */}
           <div className="lg:col-span-1 space-y-4">
+            {voiceAuth.enrolledName && !voiceAuth.isVerified && (
+              <Card className="border border-orange-200 bg-orange-50">
+                <CardContent className="p-4 text-sm text-orange-800">
+                  Say your enrolled name (“{voiceAuth.enrolledName}”) once to unlock voice commands.
+                </CardContent>
+              </Card>
+            )}
             <VoiceControlPanel
               isListening={voice.isListening}
               isSupported={voice.isSupported}
@@ -211,6 +344,16 @@ export default function DashboardPage() {
               voiceFeedbackEnabled={voiceFeedbackEnabled}
               onQuickCommand={runQuickCommand}
             />
+
+            {requireVoiceAuth && voiceAuth.enrolledName && !voiceAuth.isVerified && (
+              <div className="mt-2">
+                <VoiceAuthentication
+                  mode="verify"
+                  onAuthSuccess={() => voiceAuth.markVerified(true)}
+                  onAuthFailed={() => voiceAuth.markVerified(false)}
+                />
+              </div>
+            )}
 
             {!voice.isSupported && !showVoiceGuide && (
               <Button
@@ -299,6 +442,36 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
+
+      {/* Invoice SMS Dialog */}
+      <AlertDialog open={invoiceDialogOpen} onOpenChange={setInvoiceDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Invoice Ready</AlertDialogTitle>
+            <AlertDialogDescription>
+              Review the bill and choose to send via SMS.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-3 max-h-72 overflow-auto">
+            <div className="text-sm text-gray-700">
+              <div className="font-medium">Items</div>
+              <ul className="list-disc list-inside">
+                {(invoicePreview?.items || []).map((it, idx) => (
+                  <li key={idx}>{String(it.quantity)} × {it.name} @ ₹{Number(it.rate).toFixed(2)} = ₹{Number(it.amount).toFixed(2)}</li>
+                ))}
+              </ul>
+            </div>
+            <div className="text-right font-semibold">Total: ₹{Number(invoicePreview?.total || 0).toFixed(2)}</div>
+            <div className="text-sm text-gray-600">Phone: {customerPhone || "(enter phone above)"}</div>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isSendingSms}>Close</AlertDialogCancel>
+            <AlertDialogAction disabled={!customerPhone || isSendingSms} onClick={sendInvoiceSms}>
+              {isSendingSms ? "Sending…" : "Send SMS"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

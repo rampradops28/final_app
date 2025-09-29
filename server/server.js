@@ -3,6 +3,7 @@ import "dotenv/config";
 import { connectDB } from "./db.js";
 import { registerRoutes } from "./route.js";
 import { setupVite, serveStatic, log } from "./vite-server.js";
+import path from "path";
 
 const app = express();
 app.use(express.json());
@@ -39,8 +40,12 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  await connectDB();
-  log("connected to MongoDB");
+  try {
+    await connectDB();
+    log("connected to MongoDB");
+  } catch (err) {
+    log(`DB disabled or unavailable: ${err?.message || err}`);
+  }
   const server = await registerRoutes(app);
 
   app.use((err, _req, res, _next) => {
@@ -50,6 +55,12 @@ app.use((req, res, next) => {
     res.status(status).json({ message });
     throw err;
   });
+
+  // Serve generated invoices statically so Twilio can fetch media URLs
+  try {
+    const invoicesDir = path.join(process.cwd(), "invoices");
+    app.use("/invoices", express.static(invoicesDir));
+  } catch {}
 
   if (app.get("env") === "development") {
     await setupVite(app, server);

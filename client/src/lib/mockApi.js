@@ -16,9 +16,9 @@ function errorResponse(status = 400, message = "Bad Request") {
 function loadStore() {
   try {
     const raw = localStorage.getItem("__mock_billing_store__");
-    return raw ? JSON.parse(raw) : { bills: {}, billMeta: {} };
+    return raw ? JSON.parse(raw) : { bills: {}, billMeta: {}, voice: {} };
   } catch {
-    return { bills: {}, billMeta: {} };
+    return { bills: {}, billMeta: {}, voice: {} };
   }
 }
 
@@ -120,6 +120,53 @@ async function handleBill(method, url, body) {
   return errorResponse(404, "Not Found");
 }
 
+function strToEmbedding(voiceData) {
+  if (!voiceData || typeof voiceData !== "string") return new Array(16).fill(0);
+  const arr = Array.from(voiceData).map((c) => c.charCodeAt(0) % 32);
+  const dim = 16;
+  const out = new Array(dim).fill(0);
+  for (let i = 0; i < arr.length; i++) out[i % dim] += arr[i];
+  return out.map((v) => Math.round((v / (arr.length || 1)) * 100) / 100);
+}
+
+function cosineSim(a, b) {
+  if (!a || !b || a.length !== b.length) return 0;
+  let dot = 0, na = 0, nb = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    na += a[i] * a[i];
+    nb += b[i] * b[i];
+  }
+  const denom = Math.sqrt(na) * Math.sqrt(nb) || 1;
+  return dot / denom;
+}
+
+async function handleVoiceAuth(method, url, body) {
+  const store = loadStore();
+  // POST /api/voice-auth/register
+  if (method === "POST" && url === "/api/voice-auth/register") {
+    const { userId = "local", voiceData } = body || {};
+    if (!voiceData) return errorResponse(400, "Missing voiceData");
+    const emb = strToEmbedding(voiceData);
+    store.voice[userId] = store.voice[userId] || [];
+    store.voice[userId].push({ id: randomId("vp_"), emb, createdAt: Date.now(), isActive: true });
+    saveStore(store);
+    return jsonResponse({ success: true });
+  }
+  // POST /api/voice-auth/verify
+  if (method === "POST" && url === "/api/voice-auth/verify") {
+    const { userId = "local", voiceData } = body || {};
+    if (!voiceData) return errorResponse(400, "Missing voiceData");
+    const emb = strToEmbedding(voiceData);
+    const prints = store.voice[userId] || [];
+    if (prints.length === 0) return jsonResponse({ verified: true });
+    const best = prints.reduce((m, p) => Math.max(m, cosineSim(emb, p.emb)), 0);
+    const verified = best >= 0.92; // strict-ish threshold
+    return jsonResponse({ verified, score: best });
+  }
+  return errorResponse(404, "Not Found");
+}
+
 // --------- Router ---------
 export default async function mockApiRequest(method, url, data) {
   const body = data ?? null;
@@ -127,6 +174,8 @@ export default async function mockApiRequest(method, url, data) {
   if (url.startsWith("/api/auth/")) return handleAuth(method, url, body);
   if (url.startsWith("/api/bill-items")) return handleBillItems(method, url, body);
   if (url.startsWith("/api/bill")) return handleBill(method, url, body);
+  if (url.startsWith("/api/voice-auth")) return handleVoiceAuth(method, url, body);
+  if (url.startsWith("/api/sms")) return jsonResponse({ success: true, mocked: true });
 
   return errorResponse(404, "Not Found");
 }

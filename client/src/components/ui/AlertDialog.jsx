@@ -1,38 +1,54 @@
-import React, { forwardRef } from "react";
-import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog";
-
+import React, { createContext, forwardRef, useContext } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
 
-const AlertDialog = AlertDialogPrimitive.Root;
-const AlertDialogTrigger = AlertDialogPrimitive.Trigger;
-const AlertDialogPortal = AlertDialogPrimitive.Portal;
+const DialogContext = createContext({ open: false, onOpenChange: () => {} });
 
-const AlertDialogOverlay = forwardRef(({ className, ...props }, ref) => (
-  <AlertDialogPrimitive.Overlay
-    ref={ref}
-    className={cn(
-      "fixed inset-0 z-50 bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
-      className
-    )}
-    {...props}
-  />
-));
-AlertDialogOverlay.displayName = "AlertDialogOverlay";
+const AlertDialog = ({ open, onOpenChange, children }) => (
+  <DialogContext.Provider value={{ open: !!open, onOpenChange: onOpenChange || (() => {}) }}>
+    {children}
+  </DialogContext.Provider>
+);
 
-const AlertDialogContent = forwardRef(({ className, ...props }, ref) => (
-  <AlertDialogPortal>
-    <AlertDialogOverlay />
-    <AlertDialogPrimitive.Content
+const AlertDialogPortal = ({ children }) => {
+  if (typeof document === "undefined") return null;
+  return createPortal(children, document.body);
+};
+
+const AlertDialogOverlay = forwardRef(({ className, ...props }, ref) => {
+  const { open } = useContext(DialogContext);
+  if (!open) return null;
+  return (
+    <div
       ref={ref}
       className={cn(
-        "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg",
+        "fixed inset-0 z-50 bg-black/80",
         className
       )}
       {...props}
     />
-  </AlertDialogPortal>
-));
+  );
+});
+AlertDialogOverlay.displayName = "AlertDialogOverlay";
+
+const AlertDialogContent = forwardRef(({ className, ...props }, ref) => {
+  const { open } = useContext(DialogContext);
+  if (!open) return null;
+  return (
+    <AlertDialogPortal>
+      <AlertDialogOverlay />
+      <div
+        ref={ref}
+        className={cn(
+          "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg sm:rounded-lg",
+          className
+        )}
+        {...props}
+      />
+    </AlertDialogPortal>
+  );
+});
 AlertDialogContent.displayName = "AlertDialogContent";
 
 const AlertDialogHeader = ({ className, ...props }) => (
@@ -55,7 +71,7 @@ const AlertDialogFooter = ({ className, ...props }) => (
 AlertDialogFooter.displayName = "AlertDialogFooter";
 
 const AlertDialogTitle = forwardRef(({ className, ...props }, ref) => (
-  <AlertDialogPrimitive.Title
+  <h2
     ref={ref}
     className={cn("text-lg font-semibold", className)}
     {...props}
@@ -64,7 +80,7 @@ const AlertDialogTitle = forwardRef(({ className, ...props }, ref) => (
 AlertDialogTitle.displayName = "AlertDialogTitle";
 
 const AlertDialogDescription = forwardRef(({ className, ...props }, ref) => (
-  <AlertDialogPrimitive.Description
+  <p
     ref={ref}
     className={cn("text-sm text-muted-foreground", className)}
     {...props}
@@ -72,29 +88,36 @@ const AlertDialogDescription = forwardRef(({ className, ...props }, ref) => (
 ));
 AlertDialogDescription.displayName = "AlertDialogDescription";
 
-const AlertDialogAction = forwardRef(({ className, ...props }, ref) => (
-  <AlertDialogPrimitive.Action
+const AlertDialogAction = forwardRef(({ className, onClick, ...props }, ref) => (
+  <button
     ref={ref}
     className={cn(buttonVariants(), className)}
+    onClick={onClick}
     {...props}
   />
 ));
 AlertDialogAction.displayName = "AlertDialogAction";
 
-const AlertDialogCancel = forwardRef(({ className, ...props }, ref) => (
-  <AlertDialogPrimitive.Cancel
-    ref={ref}
-    className={cn(buttonVariants({ variant: "outline" }), "mt-2 sm:mt-0", className)}
-    {...props}
-  />
-));
+const AlertDialogCancel = forwardRef(({ className, onClick, ...props }, ref) => {
+  const { onOpenChange } = useContext(DialogContext);
+  return (
+    <button
+      ref={ref}
+      className={cn(buttonVariants({ variant: "outline" }), "mt-2 sm:mt-0", className)}
+      onClick={(e) => {
+        onOpenChange?.(false);
+        onClick?.(e);
+      }}
+      {...props}
+    />
+  );
+});
 AlertDialogCancel.displayName = "AlertDialogCancel";
 
 export {
   AlertDialog,
   AlertDialogPortal,
   AlertDialogOverlay,
-  AlertDialogTrigger,
   AlertDialogContent,
   AlertDialogHeader,
   AlertDialogFooter,

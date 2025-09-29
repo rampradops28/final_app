@@ -8,6 +8,8 @@ export function useVoiceRecognition(onCommand) {
   const [currentLanguage, setCurrentLanguage] = useState("en-US")
   const recognitionRef = useRef(null)
   const lastProcessedRef = useRef({ text: '', at: 0 })
+  const commandCountRef = useRef(0)
+  const shouldContinueRef = useRef(false)
   const { toast } = useToast()
 
   // Check for speech recognition support
@@ -36,6 +38,13 @@ export function useVoiceRecognition(onCommand) {
     setTimeout(checkSupport, 1000)
   }, [])
 
+  const mapLangForRecognition = (lang) => {
+    if (!lang) return "en-US"
+    // Treat mixed mode as English for browser SpeechRecognition
+    if (lang === "mixed") return "en-US"
+    return lang
+  }
+
   const initializeRecognition = useCallback(() => {
     if (typeof window === "undefined") return
 
@@ -63,10 +72,10 @@ export function useVoiceRecognition(onCommand) {
         "You can now use voice commands! Click the microphone to start.",
     })
 
-    // Reduce repeats on some mobile browsers
-    recognition.continuous = false
+    // Continuous session: keep listening across multiple commands
+    recognition.continuous = true
     recognition.interimResults = false
-    recognition.lang = currentLanguage
+    recognition.lang = mapLangForRecognition(currentLanguage)
 
     recognition.onstart = () => {
       setIsListening(true)
@@ -81,19 +90,18 @@ export function useVoiceRecognition(onCommand) {
       const text = String(last[0]?.transcript || '').trim().toLowerCase()
       if (!text) return
 
-      // Throttle duplicates within 1500ms or same text
+      // Throttle duplicates within 900ms or same text
       const now = Date.now()
       const { text: prevText, at } = lastProcessedRef.current
-      if (text === prevText && now - at < 1500) {
+      if (text === prevText && now - at < 900) {
         return
       }
       lastProcessedRef.current = { text, at: now }
 
       setLastCommand(text)
-      // Stop first to avoid TTS being captured
-      try { recognition.stop() } catch (_) {}
       try {
         onCommand(text)
+        commandCountRef.current += 1
       } catch (e) {
         console.error('onCommand failed', e)
       }
@@ -133,7 +141,16 @@ export function useVoiceRecognition(onCommand) {
     }
 
     recognition.onend = () => {
-      setIsListening(false)
+      // Auto-restart only if user didn't explicitly stop
+      if (shouldContinueRef.current) {
+        // Brief backoff after several commands to avoid browser throttling
+        const delay = commandCountRef.current > 3 ? 150 : 30
+        setTimeout(() => {
+          try { recognition.start() } catch (_) {}
+        }, delay)
+      } else {
+        setIsListening(false)
+      }
     }
 
     recognitionRef.current = recognition
@@ -158,6 +175,7 @@ export function useVoiceRecognition(onCommand) {
 
     if (recognitionRef.current && !isListening) {
       try {
+        shouldContinueRef.current = true
         recognitionRef.current.start()
       } catch (error) {
         console.error("Failed to start recognition:", error)
@@ -171,6 +189,7 @@ export function useVoiceRecognition(onCommand) {
   }, [isListening, initializeRecognition, toast])
 
   const stopListening = useCallback(() => {
+    shouldContinueRef.current = false
     if (recognitionRef.current && isListening) {
       recognitionRef.current.stop()
     }
@@ -191,7 +210,7 @@ export function useVoiceRecognition(onCommand) {
         recognitionRef.current.stop()
         setTimeout(() => {
           if (recognitionRef.current) {
-            recognitionRef.current.lang = lang
+            recognitionRef.current.lang = mapLangForRecognition(lang)
             recognitionRef.current.start()
           }
         }, 100)
@@ -208,5 +227,6 @@ export function useVoiceRecognition(onCommand) {
     stopListening,
     toggleListening,
     setLanguage,
+    currentLanguage,
   }
 }

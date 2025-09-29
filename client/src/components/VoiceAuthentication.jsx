@@ -3,8 +3,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Mic, Shield, CheckCircle, XCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { recordAudioBase64 } from "@/lib/utils";
+import { voiceApi } from "@/lib/QueryClient";
 
-export default function VoiceAuthentication({ onAuthSuccess, onAuthFailed }) {
+export default function VoiceAuthentication({ onAuthSuccess, onAuthFailed, mode = "enroll", userId = "local" }) {
   const [isRecording, setIsRecording] = useState(false);
   const [authStatus, setAuthStatus] = useState("idle"); // "idle" | "recording" | "processing" | "success" | "failed"
   const { toast } = useToast();
@@ -14,14 +16,18 @@ export default function VoiceAuthentication({ onAuthSuccess, onAuthFailed }) {
     setAuthStatus("recording");
 
     try {
-      // Simulate voice recording and authentication
-      await new Promise((resolve) => setTimeout(resolve, 3000));
-
+      const base64 = await recordAudioBase64({ durationMs: 3000 });
       setAuthStatus("processing");
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-
-      // Simulate voice matching (70% success rate for demo)
-      const isAuthenticated = Math.random() > 0.3;
+      if (mode === "enroll") {
+        await voiceApi.register(userId, base64);
+        setAuthStatus("success");
+        toast({ title: "Voice enrolled", description: "Your voiceprint has been registered." });
+        setTimeout(() => onAuthSuccess?.(), 800);
+        return;
+      }
+      // verify mode
+      const result = await voiceApi.verify(userId, base64);
+      const isAuthenticated = !!result?.verified;
 
       if (isAuthenticated) {
         setAuthStatus("success");
@@ -29,7 +35,7 @@ export default function VoiceAuthentication({ onAuthSuccess, onAuthFailed }) {
           title: "Voice Authentication Successful",
           description: "Welcome! Your voice has been verified.",
         });
-        setTimeout(() => onAuthSuccess(), 1000);
+        setTimeout(() => onAuthSuccess?.(), 800);
       } else {
         setAuthStatus("failed");
         toast({
@@ -39,7 +45,7 @@ export default function VoiceAuthentication({ onAuthSuccess, onAuthFailed }) {
         });
         setTimeout(() => {
           setAuthStatus("idle");
-          onAuthFailed();
+          onAuthFailed?.();
         }, 2000);
       }
     } catch (error) {
@@ -119,7 +125,7 @@ export default function VoiceAuthentication({ onAuthSuccess, onAuthFailed }) {
             data-testid="button-voice-auth"
           >
             {authStatus === "idle"
-              ? "Start Voice Authentication"
+              ? (mode === "enroll" ? "Enroll Voice" : "Verify by Voice")
               : authStatus === "recording"
               ? "Recording..."
               : authStatus === "processing"

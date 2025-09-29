@@ -8,11 +8,13 @@ export function isTwilioConfigured() {
   );
 }
 
-export async function sendSms({ to, body }) {
+export async function sendSms({ to, body, mediaUrl }) {
   const accountSid = process.env.TWILIO_ACCOUNT_SID;
   const authToken = process.env.TWILIO_AUTH_TOKEN;
   const from = process.env.TWILIO_FROM || process.env.TWILIO_FROM_NUMBER;
   const client = twilio(accountSid, authToken);
-  const res = await client.messages.create({ to, from, body });
+  const payload = { to, from, body };
+  if (mediaUrl) payload.mediaUrl = mediaUrl;
+  const res = await client.messages.create(payload);
   return res;
 }

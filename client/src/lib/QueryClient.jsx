@@ -19,6 +19,17 @@ export async function apiRequest(method, url, data) {
   return res;
 }
 
+export const voiceApi = {
+  async register(userId, voiceData) {
+    const res = await apiRequest("POST", "/api/voice-auth/register", { userId, voiceData });
+    return await res.json();
+  },
+  async verify(userId, voiceData) {
+    const res = await apiRequest("POST", "/api/voice-auth/verify", { userId, voiceData });
+    return await res.json();
+  },
+};
+
 export const getQueryFn = ({ on401 }) => {
   return async ({ queryKey }) => {
     const res = await fetch(queryKey.join("/"), {

@@ -72,3 +72,15 @@ export const queryClient = new QueryClient({
     },
   },
 });
+
+// Voice auth API helpers (mirrors versions in QueryClient.jsx)
+export const voiceApi = {
+  async register(userId, voiceData) {
+    const res = await apiRequest("POST", "/api/voice-auth/register", { userId, voiceData });
+    return await res.json();
+  },
+  async verify(userId, voiceData) {
+    const res = await apiRequest("POST", "/api/voice-auth/verify", { userId, voiceData });
+    return await res.json();
+  },
+};

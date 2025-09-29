@@ -198,12 +198,146 @@ const intents = [
   },
 ];
 
-export function parseVoiceCommand(command) {
-  const text = String(command || "").toLowerCase().trim();
+// --------------------------------------------------
+// Grocery dictionary + fuzzy matching (EN + TA)
+// --------------------------------------------------
+const EN_PRODUCTS = [
+  "tomato","potato","onion","carrot","cabbage","cauliflower","spinach","coriander","ginger","garlic",
+  "chilli","capsicum","cucumber","brinjal","lady finger","okra","beetroot","pumpkin","bottle gourd","bitter gourd",
+  "apple","banana","orange","grapes","mango","papaya","pomegranate","watermelon","guava",
+  "rice","wheat","atta","flour","sugar","salt","oil","ghee","butter","milk","curd","paneer","cheese",
+  "egg","bread","biscuit","noodles","pasta","tea","coffee","masala","turmeric","cumin","mustard","pepper",
+  "dal","toor dal","urad dal","chana dal","green gram","black gram","chickpea","sooji","rava","poha",
+  "soap","shampoo","toothpaste","detergent"
+];
+
+// Tamil canonical → English mapping (with common transliterations)
+const TA_TO_EN = {
+  "தக்காளி": "tomato",
+  "உருளைக்கிழங்கு": "potato",
+  "வெங்காயம்": "onion",
+  "காரட்": "carrot",
+  "முட்டைகோஸ்": "cabbage",
+  "பீட்ரூட்": "beetroot",
+  "பூசணிக்காய்": "pumpkin",
+  "பாகற்காய்": "bitter gourd",
+  "சப்ஸிகம்": "capsicum",
+  "வெள்ளரிக்காய்": "cucumber",
+  "கத்தரிக்காய்": "brinjal",
+  "வெந்தயம்": "fenugreek",
+  "அரிசி": "rice",
+  "கோதுமை": "wheat",
+  "மாவு": "flour",
+  "சர்க்கரை": "sugar",
+  "உப்பு": "salt",
+  "எண்ணெய்": "oil",
+  "பால்": "milk",
+  "முட்டை": "egg",
+  "வாழைப்பழம்": "banana",
+  "ஆப்பிள்": "apple",
+};
+
+const TA_TRANSLIT_TO_EN = {
+  "thakkali": "tomato",
+  "urulaikilangu": "potato",
+  "venkayam": "onion",
+  "kaarat": "carrot",
+  "muttaikose": "cabbage",
+  "vellarikkai": "cucumber",
+  "katharikkai": "brinjal",
+  "arisi": "rice",
+  "gothumai": "wheat",
+  "sarkkarai": "sugar",
+  "uppu": "salt",
+  "ennai": "oil",
+  "paal": "milk",
+  "mutta": "egg",
+  "vaazhaipazham": "banana",
+};
+
+const CORRECTIONS = {
+  // Frequent English mis-hearings
+  "character": "carrot",
+  "tomoto": "tomato",
+  "pototo": "potato",
+  "onian": "onion",
+  // Tamil-ish to English
+  "thakali": "tomato",
+  "urulai kilangu": "potato",
+};
+
+function levenshtein(a, b) {
+  const s = a.toLowerCase();
+  const t = b.toLowerCase();
+  const m = s.length, n = t.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  const d = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) d[i][0] = i;
+  for (let j = 0; j <= n; j++) d[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      const cost = s[i - 1] === t[j - 1] ? 0 : 1;
+      d[i][j] = Math.min(
+        d[i - 1][j] + 1,
+        d[i][j - 1] + 1,
+        d[i - 1][j - 1] + cost
+      );
+    }
+  }
+  return d[m][n];
+}
+
+function normalizeProductName(rawName, languageMode = "mixed") {
+  if (!rawName) return rawName;
+  let name = String(rawName).toLowerCase().trim();
+  if (CORRECTIONS[name]) name = CORRECTIONS[name];
+
+  const mode = languageMode === "ta-IN" ? "ta" : languageMode === "en-US" ? "en" : "mixed";
+
+  // Direct Tamil canonical
+  if (mode !== "en" && TA_TO_EN[name]) return TA_TO_EN[name];
+  // Direct transliteration
+  if (mode !== "en" && TA_TRANSLIT_TO_EN[name]) return TA_TRANSLIT_TO_EN[name];
+
+  const candidates = new Set(EN_PRODUCTS);
+  if (mode !== "en") {
+    Object.values(TA_TO_EN).forEach((v) => candidates.add(v));
+  }
+
+  // Token-wise search: pick best candidate by min normalized distance
+  let best = { item: name, score: Infinity };
+  for (const cand of candidates) {
+    const dist = levenshtein(name, cand);
+    const norm = dist / Math.max(3, Math.max(name.length, cand.length));
+    if (norm < best.score) best = { item: cand, score: norm };
+  }
+
+  // Threshold to avoid wild mismatches (tuneable)
+  if (best.score <= 0.45) return best.item;
+  return name;
+}
+
+function preprocess(text, languageMode = "mixed") {
+  let t = String(text || "").toLowerCase().trim();
+  // Light-weight corrections on whole text
+  t = t.replace(/\bcharacter\b/g, "carrot");
+  t = t.replace(/\btomoto\b/g, "tomato");
+  // Maintain original otherwise
+  return t;
+}
+
+export function parseVoiceCommand(command, options = {}) {
+  const languageMode = options.languageMode || "mixed";
+  const text = preprocess(command, languageMode);
   for (const intent of intents) {
     if (!intent.test(text)) continue;
+    // Wrap extractor to post-normalize product names where applicable
     const entities = intent.extract(text);
     if (entities) {
+      if (entities.name) {
+        entities.name = cap(normalizeProductName(entities.name, languageMode));
+      }
       return {
         intent: intent.name,
         entities,
@@ -224,7 +358,7 @@ export function parseVoiceCommand(command) {
 }
 
 export function handleVoiceCommand(command, context, settings) {
-  const result = parseVoiceCommand(command);
+  const result = parseVoiceCommand(command, { languageMode: settings?.languageMode || "mixed" });
   const shouldSpeak = settings?.voiceFeedback !== false;
 
   const getOrderSummary = () => {
@@ -252,6 +386,8 @@ export function handleVoiceCommand(command, context, settings) {
       if (e?.name && e?.quantityRaw && typeof e?.rateNumber === "number") {
         context.addItem(e.name, e.quantityRaw, e.rateNumber);
         if (shouldSpeak) speakText(`${result.message || "Item added to bill"}. ${getOrderSummary()}`);
+      } else if (context?.toast) {
+        context.toast({ title: "Wrong command", description: "Try: add tomato 1 piece 5", variant: "destructive" });
       }
       break;
     }
@@ -316,6 +452,7 @@ export function handleVoiceCommand(command, context, settings) {
 
     default:
       if (shouldSpeak) speakText("Command not recognized. Please try again.");
+      if (context?.toast) context.toast({ title: "Wrong command", description: "Say 'help' to hear supported commands", variant: "destructive" });
       break;
   }
 
